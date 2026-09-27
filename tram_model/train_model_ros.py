@@ -533,7 +533,7 @@ class TramModelNode(Node):
     def _copy_lock(self, dst: RouteFollower, src: RouteFollower) -> None:
         dst.route = src.route
         dst.s = src.s
-        dst.x, dst.y, dst.yaw, dst.curv = src.x, src.y, src.yaw, src.curv
+        dst.x, dst.y, dst.z, dst.yaw, dst.curv = src.x, src.y, src.z, src.yaw, src.curv
         dst.initialized = True
 
     def _fuse_gnss_speed(self, t: float, base_e: float, base_n: float) -> None:
@@ -742,7 +742,8 @@ class TramModelNode(Node):
         rx, ry = geodetic_to_json_xy(lat, lon, **self._route_json_params)
         return rx, ry, wrap_angle(yaw + self._route_json_params["angle"])
 
-    def _append_pose(self, path: Path, stamp, x: float, y: float, yaw: float) -> None:
+    def _append_pose(self, path: Path, stamp, x: float, y: float, yaw: float,
+                     z: float = 0.0) -> None:
         if self._enu is None:
             return
         x, y, yaw = self._to_route_map(x, y, yaw)
@@ -755,6 +756,7 @@ class TramModelNode(Node):
         pose.header.frame_id = self._map_frame
         pose.pose.position.x = x
         pose.pose.position.y = y
+        pose.pose.position.z = z
         pose.pose.orientation.z = math.sin(yaw / 2.0)
         pose.pose.orientation.w = math.cos(yaw / 2.0)
         path.poses.append(pose)
@@ -772,7 +774,7 @@ class TramModelNode(Node):
             self._pub_route_path.publish(self._route_path)
 
     def _make_odom(self, stamp, x: float, y: float, yaw: float, v: float,
-                   yaw_rate: float) -> Odometry:
+                   yaw_rate: float, z: float = 0.0) -> Odometry:
         x, y, yaw = self._to_route_map(x, y, yaw)
         odom = Odometry()
         odom.header.stamp = stamp
@@ -780,6 +782,7 @@ class TramModelNode(Node):
         odom.child_frame_id = self._base_frame
         odom.pose.pose.position.x = x
         odom.pose.pose.position.y = y
+        odom.pose.pose.position.z = z
         odom.pose.pose.orientation.z = math.sin(yaw / 2.0)
         odom.pose.pose.orientation.w = math.cos(yaw / 2.0)
         odom.twist.twist.linear.x = v
@@ -806,16 +809,17 @@ class TramModelNode(Node):
         if self._position_source == "route":
             if not f.locked:
                 return
-            ex, ey, yaw, kappa = f.x, f.y, f.yaw, f.curv
+            ex, ey, ez, yaw, kappa = f.x, f.y, f.z, f.yaw, f.curv
             odom_speed = v_model
         elif g.locked:
-            ex, ey, yaw, kappa = g.x, g.y, g.yaw, g.curv
+            ex, ey, ez, yaw, kappa = g.x, g.y, g.z, g.yaw, g.curv
             odom_speed = v
         else:
             ex, ey = ekf.position
-            yaw, kappa = ekf.yaw, ekf.kappa
+            ez, yaw, kappa = 0.0, ekf.yaw, ekf.kappa
             odom_speed = v
-        odom = self._make_odom(stamp, ex, ey, yaw, odom_speed, odom_speed * kappa)
+        odom = self._make_odom(
+            stamp, ex, ey, yaw, odom_speed, odom_speed * kappa, ez)
         if self._position_source == "ekf":
             P = ekf.P
             cov = odom.pose.covariance
@@ -828,13 +832,13 @@ class TramModelNode(Node):
                 xy_cov[0, 0], xy_cov[0, 1], xy_cov[1, 0], xy_cov[1, 1])
             cov[35] = P[2, 2]
             odom.twist.covariance[0] = P[4, 4]
-        self._append_pose(self._path, stamp, ex, ey, yaw)
+        self._append_pose(self._path, stamp, ex, ey, yaw, ez)
         self._pub_position.publish(odom)
         if f.locked:
             route_odom = self._make_odom(
-                stamp, f.x, f.y, f.yaw, v_model, v_model * f.curv)
+                stamp, f.x, f.y, f.yaw, v_model, v_model * f.curv, f.z)
             self._pub_route_position.publish(route_odom)
-            self._append_pose(self._route_path, stamp, f.x, f.y, f.yaw)
+            self._append_pose(self._route_path, stamp, f.x, f.y, f.yaw, f.z)
         qz = odom.pose.pose.orientation.z
         qw = odom.pose.pose.orientation.w
 
@@ -844,6 +848,7 @@ class TramModelNode(Node):
         tf.child_frame_id = self._base_frame
         tf.transform.translation.x = odom.pose.pose.position.x
         tf.transform.translation.y = odom.pose.pose.position.y
+        tf.transform.translation.z = odom.pose.pose.position.z
         tf.transform.rotation.z = qz
         tf.transform.rotation.w = qw
         self._tf.sendTransform(tf)
