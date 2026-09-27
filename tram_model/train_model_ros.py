@@ -79,7 +79,7 @@ class TramModelNode(Node):
         self.declare_parameter("pp_min_speed_mps", 0.5)
         json_dir = str(model._find_config_path().parent)
         self.declare_parameter("route_dir", json_dir)
-        self.declare_parameter("route_files", ["kinematic_state.json"])
+        self.declare_parameter("route_files", ["shchukinskaya_tallinskaya.json", "tallinskaya_shchukinskaya.json"])
         self.declare_parameter("route_origin_lat", 55.8104031450)
         self.declare_parameter("route_origin_lon", 37.4623050517)
         self.declare_parameter("route_json_x0", 103634.578)
