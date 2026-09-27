@@ -32,7 +32,7 @@ def test_route_model_publishes_physical_speed_in_odometry():
     node._position_source = "route"
     node._base_frame, node._map_frame = "base_link", "map"
     node._follower = SimpleNamespace(
-        locked=True, x=10.0, y=20.0, yaw=0.0, curv=0.0, s=10.0,
+        locked=True, x=10.0, y=20.0, z=165.2, yaw=0.0, curv=0.0, s=10.0,
         route=SimpleNamespace(name="test"))
     node._result_follower = SimpleNamespace(locked=False)
     node._pub_velocity = SimpleNamespace(publish=velocities.append)
@@ -70,3 +70,4 @@ def test_route_model_publishes_physical_speed_in_odometry():
     assert velocities[0].velocity == 2.0
     assert positions[0].twist.twist.linear.x == 2.0
     assert positions[0].pose.pose.position.x == 10.0
+    assert positions[0].pose.pose.position.z == 165.2

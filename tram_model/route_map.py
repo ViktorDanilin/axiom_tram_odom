@@ -186,6 +186,21 @@ class Route:
         curv = float(self.curv[i] + u * (self.curv[i + 1] - self.curv[i]))
         return x, y, _wrap(yaw), curv
 
+    def altitude_at(self, s: float) -> float:
+        """JSON z на той же дуге, что и pose_at."""
+        n = len(self.alt)
+        if n == 0:
+            return 0.0
+        if n == 1 or len(self.s) < 2 or s <= 0.0:
+            return float(self.alt[0])
+        if s >= self.length:
+            return float(self.alt[-1])
+        i = int(np.searchsorted(self.s, s, side="right")) - 1
+        i = min(max(i, 0), n - 2)
+        span = float(self.s[i + 1] - self.s[i])
+        u = 0.0 if span < 1e-9 else (s - float(self.s[i])) / span
+        return float(self.alt[i] + u * (self.alt[i + 1] - self.alt[i]))
+
 
 class RouteMap:
     def __init__(self, files: list[str],
@@ -272,7 +287,7 @@ class RouteFollower:
         self.p = params
         self.route: Route | None = None
         self.s = 0.0
-        self.x = self.y = self.yaw = 0.0
+        self.x = self.y = self.z = self.yaw = 0.0
         self.curv = 0.0
         self.initialized = False
         self._match_state: dict[str, tuple] = {}
@@ -315,7 +330,7 @@ class RouteFollower:
         if count < self.p.min_match_count or m[2] > self.p.lock_max_lateral_m:
             return False
         self.route, self.s = m[0], m[1]
-        self.x, self.y, self.yaw, self.curv = self.route.pose_at(self.s)
+        self._set_pose_from_route()
         self.initialized = True
         return True
 
@@ -342,7 +357,7 @@ class RouteFollower:
                     and self._switch_route():
                 return
             self.s = min(self.s, self.route.length)
-        self.x, self.y, self.yaw, self.curv = self.route.pose_at(self.s)
+        self._set_pose_from_route()
 
     def _switch_route(self) -> bool:
         ex, ey = self.route.xy[-1]
@@ -353,6 +368,10 @@ class RouteFollower:
             if math.hypot(sx - ex, sy - ey) <= self.p.switch_radius_m:
                 self.route, self.s = r, 0.0
                 self._stopped_at_end = False
-                self.x, self.y, self.yaw, self.curv = r.pose_at(0.0)
+                self._set_pose_from_route()
                 return True
         return False
+
+    def _set_pose_from_route(self) -> None:
+        self.x, self.y, self.yaw, self.curv = self.route.pose_at(self.s)
+        self.z = self.route.altitude_at(self.s)
